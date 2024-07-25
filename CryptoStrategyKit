@@ -1,0 +1,87 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import List, Dict, Callable
+
+class TradingStrategy:
+    def __init__(self, name: str, strategy_func: Callable):
+        self.name = name
+        self.strategy_func = strategy_func
+
+    def execute(self, data: pd.DataFrame) -> pd.Series:
+        return self.strategy_func(data)
+
+class CryptoStrategyKit:
+    def __init__(self):
+        self.strategies = {}  # Maps strategy names to TradingStrategy objects
+
+    def add_strategy(self, name: str, strategy_func: Callable):
+        if name in self.strategies:
+            print(f"Strategy {name} already exists.")
+            return False
+        self.strategies[name] = TradingStrategy(name, strategy_func)
+        print(f"Added strategy {name}.")
+        return True
+
+    def backtest_strategy(self, name: str, data: pd.DataFrame) -> pd.Series:
+        if name not in self.strategies:
+            print(f"Strategy {name} does not exist.")
+            return None
+        strategy = self.strategies[name]
+        signals = strategy.execute(data)
+        return signals
+
+    def simulate_trades(self, data: pd.DataFrame, signals: pd.Series) -> pd.DataFrame:
+        trades = pd.DataFrame(index=data.index)
+        trades['Price'] = data['Close']
+        trades['Signal'] = signals
+        trades['Position'] = trades['Signal'].shift()
+        trades['Daily_Return'] = data['Close'].pct_change()
+        trades['Strategy_Return'] = trades['Position'] * trades['Daily_Return']
+        trades['Cumulative_Return'] = (1 + trades['Strategy_Return']).cumprod()
+        return trades
+
+    def plot_performance(self, trades: pd.DataFrame):
+        plt.figure(figsize=(12, 6))
+        plt.plot(trades['Cumulative_Return'], label='Strategy Performance')
+        plt.title('Strategy Performance')
+        plt.xlabel('Date')
+        plt.ylabel('Cumulative Return')
+        plt.legend()
+        plt.show()
+
+# Example Strategies
+def moving_average_crossover(data: pd.DataFrame) -> pd.Series:
+    short_window = 40
+    long_window = 100
+    signals = pd.Series(index=data.index)
+    signals['Signal'] = np.where(data['Close'].rolling(window=short_window).mean() > data['Close'].rolling(window=long_window).mean(), 1.0, 0.0)
+    return signals['Signal']
+
+def momentum_strategy(data: pd.DataFrame) -> pd.Series:
+    look_back = 20
+    signals = pd.Series(index=data.index)
+    signals['Signal'] = np.where(data['Close'] > data['Close'].shift(look_back), 1.0, 0.0)
+    return signals['Signal']
+
+# Example Usage
+if __name__ == "__main__":
+    # Sample data
+    dates = pd.date_range(start="2022-01-01", periods=100, freq='D')
+    data = pd.DataFrame(index=dates)
+    data['Close'] = np.cumsum(np.random.randn(len(dates))) + 100
+
+    # Initialize CryptoStrategyKit
+    kit = CryptoStrategyKit()
+
+    # Add strategies
+    kit.add_strategy("Moving Average Crossover", moving_average_crossover)
+    kit.add_strategy("Momentum Strategy", momentum_strategy)
+
+    # Backtest strategies
+    for strategy_name in ["Moving Average Crossover", "Momentum Strategy"]:
+        signals = kit.backtest_strategy(strategy_name, data)
+        trades = kit.simulate_trades(data, signals)
+        
+        print(f"\n{strategy_name} Performance:")
+        kit.plot_performance(trades)
